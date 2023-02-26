@@ -45,7 +45,8 @@ public class WikipediaScraper {
         Queue<String> linksToVisit = new LinkedList<>();
         linksToVisit.offer(wikiLink);
         Set<String> foundLinks = new HashSet<>();
-        
+        Set<String> unreachableLinks = new HashSet<>();//links with 4xx response code will be stored separately
+
         for (int i = 0; i < n; i++) {
             int levelSize = linksToVisit.size();
             for (int j = 0; j < levelSize; j++) {
@@ -55,31 +56,37 @@ public class WikipediaScraper {
                 }
                 visitedLinks.add(currentLink);
                 System.out.println("Visiting: " + currentLink);
-                if 
-                Document doc = Jsoup.connect(currentLink).get();
-                Elements linkElements = doc.select("a[href^=/wiki/]");
-                for (Element linkElement : linkElements) {
-                    String link = linkElement.attr("href");
-                    if (isValidWikiLink(link)) {
-                        String absLink = "https://en.wikipedia.org" + link;
-                        if (!visitedLinks.contains(absLink)) {
-                            foundLinks.add(absLink);
-                            linksToVisit.offer(absLink);
+                try {
+                    Document doc = Jsoup.connect(currentLink).get();
+                    Elements linkElements = doc.select("a[href^=/wiki/]");
+                    for (Element linkElement : linkElements) {
+                        String link = linkElement.attr("href");
+                        if (isValidWikiLink(link)) {
+                            String absLink = "https://en.wikipedia.org" + link;
+                            if (!visitedLinks.contains(absLink) && !unreachableLinks.contains(absLink)) {
+                                foundLinks.add(absLink);
+                                linksToVisit.offer(absLink);
+                            }
                         }
                     }
+                } catch (IOException e) {
+                    unreachableLinks.add(currentLink);
+                    System.err.println("Error visiting " + currentLink + ": " + e.getMessage());
                 }
             }
         }
         
-        // Write the results ( all found links, total count, unique count ) to a JSON file.
+     // Write the results ( all found links, total count, unique count, unreachable links ) to a JSON file.
         Gson gson = new Gson();
         String json = gson.toJson(foundLinks);
         int totalCount = visitedLinks.size();
         int uniqueCount = foundLinks.size();
+        int unreachableCount = unreachableLinks.size();
         System.out.println("Total links visited: " + totalCount);
         System.out.println("Unique links found: " + uniqueCount);
+        System.out.println("Unreachable links found: " + unreachableCount);
         try (FileWriter writer = new FileWriter("output.json")) {
-            writer.write("{\"links\":" + json + ",\"total\":" + totalCount + ",\"unique\":" + uniqueCount + "}");
+            writer.write("{\"links\":" + json + ",\"total\":" + totalCount + ",\"unique\":" + uniqueCount + ",\"unreachable\":" + gson.toJson(unreachableLinks) + "}");
         } catch (IOException e) {
             e.printStackTrace();
         }
